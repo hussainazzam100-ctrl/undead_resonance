@@ -1,0 +1,72 @@
+[
+    {
+        "id": "central_hospital",
+        "name": "Central Hospital",
+        "description": "An abandoned hospital surrounded by overturned vehicles and burning vans",
+        "danger_level": 7,
+        "threat_level": 5,
+        "resources": [
+            "medical_supplies",
+            "food",
+            "weapons"
+        ],
+        "survivors": [
+            "survivor_01"
+        ],
+        "connections": [
+            "residential_district",
+            "police_station"
+        ],
+        "rewards": [
+            "hospital_keycard",
+            "medical_kit_X_2"
+        ]
+    },
+
+    {
+        "id": "residential_district",
+        "name": "Residential District",
+        "description": "surrounded by old houses with graffitied walls with damage to various areas and trees",
+        "danger_level": 6,
+        "threat_level": 3,
+        "resources": [
+            "drinks",
+            "food",
+            "backpack"
+        ],
+        "survivors": [
+            "survivor_02"
+        ],
+        "connections": [
+            "police_station"
+        ],
+        "rewards": [
+            "safe_house",
+            "inventory_space_X_2"
+        ]
+    },
+
+    {
+        "id": "police_station",
+        "name": "Police Station",
+        "description": "a three storey building with danger lurking in every corner",
+        "danger_level": 9,
+        "threat_level": 8,
+        "resources": [
+            "weapons",
+            "vest",
+            "food"
+        ],
+        "survivors": [
+            "survivor_03",
+            "survivor_04"
+        ],
+        "connections": [
+            "supermarket"
+        ],
+        "rewards": [
+            "artillery_weapons",
+            "police_keycard"
+        ]
+    }
+]
