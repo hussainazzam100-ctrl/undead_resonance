@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#090808">
+    <title>Undead Resonance | Survival Horror</title>
+    <link rel="stylesheet" href="reson.css">
+</head>
+<body>
+    <div class="horror-backdrop has-skull" aria-hidden="true"></div>
+
+    <!-- INTRODUCTION -->
+    <section id="intro-screen" class="intro-screen">
+        <div class="intro-content">
+            <p class="eyebrow">A SURVIVAL HORROR SCENARIO</p>
+            <h1>UNDEAD RESONANCE</h1>
+            <div class="intro-divider"></div>
+
+            <h2>THE LAST DESCENT</h2>
+
+            <p class="intro-description">
+                You wake up alone in an abandoned apartment.
+                The city has fallen silent, the power is failing,
+                and something is moving through the building.
+            </p>
+
+            <p class="intro-warning">
+                Reach the ground floor and escape before hunger,
+                injuries, or the infected permanently put you into slumber.
+            </p>
+
+            <button id="play-button" class="primary-button" type="button">
+                PLAY
+            </button>
+
+            <p class="intro-footnote">YOUR SURVIVAL IS NOT GUARANTEED.</p>
+        </div>
+    </section>
+
+    <!-- GAME -->
+    <div id="game-screen" class="game-container hidden">
+        <header class="game-header">
+            <div class="game-brand">
+                <p class="eyebrow">SURVIVAL RECORD // 001</p>
+                <h1>UNDEAD RESONANCE</h1>
+                <p class="scenario-label">THE LAST DESCENT</p>
+            </div>
+
+            <div class="world-status">
+                <span class="status-indicator"></span>
+                <span>THE OUTBREAK CONTINUES</span>
+            </div>
+        </header>
+
+        <main class="game-layout">
+            <section class="story-panel">
+                <div class="location-heading">
+                    <p class="eyebrow">CURRENT LOCATION</p>
+                    <h2 id="area-name">Abandoned Apartment</h2>
+                    <p id="area-description">
+                        Dust and termites consume the abandoned furniture.
+                        The former resident may still be present.
+                    </p>
+                </div>
+
+                <div class="story-divider"></div>
+
+                <div class="event-log" id="event-log" aria-live="polite">
+                    <p class="log-entry">
+                        <span class="log-prefix">[SYSTEM]</span>
+                        You are alive. For now.
+                    </p>
+                </div>
+
+                <div class="action-panel">
+                    <p class="eyebrow">YOUR NEXT MOVE</p>
+
+                    <div id="main-action-buttons" class="action-buttons">
+                        <button id="search-button" type="button">
+                            Search Area
+                        </button>
+                        <button id="move-button" type="button">
+                            Move
+                        </button>
+                    </div>
+
+                    <div id="dynamic-choices"></div>
+                </div>
+            </section>
+
+            <aside class="status-panel">
+                <p class="eyebrow">SURVIVOR STATUS</p>
+                <h2>PLAYER ONE</h2>
+
+                <div class="stat">
+                    <div class="stat-label">
+                        <span>HEALTH</span>
+                        <span id="health-value">100</span>
+                    </div>
+                    <div class="stat-track">
+                        <div id="health-bar" class="stat-fill health-fill"></div>
+                    </div>
+                </div>
+
+                <div class="stat">
+                    <div class="stat-label">
+                        <span>INFECTION</span>
+                        <span id="infection-value">0</span>
+                    </div>
+                    <div class="stat-track">
+                        <div id="infection-bar" class="stat-fill infection-fill"></div>
+                    </div>
+                </div>
+
+                <div class="stat">
+                    <div class="stat-label">
+                        <span>HUNGER</span>
+                        <span id="hunger-value">50</span>
+                    </div>
+                    <div class="stat-track">
+                        <div id="hunger-bar" class="stat-fill hunger-fill"></div>
+                    </div>
+                </div>
+
+                <div class="panel-divider"></div>
+
+                <p class="eyebrow">INVENTORY</p>
+                <ul id="inventory-list">
+                    <li>Loading inventory...</li>
+                </ul>
+
+                <p class="inventory-capacity" id="inventory-capacity">
+                    Capacity: --
+                </p>
+            </aside>
+        </main>
+
+        <footer class="game-footer">
+            <span>UNDEAD RESONANCE // SURVIVAL HORROR</span>
+            <span>TRUST NOTHING IN THE DARK</span>
+        </footer>
+    </div>
+
+    <!-- FIGHT / INVENTORY WINDOW -->
+    <div id="fight-modal" class="modal-backdrop hidden"
+         role="dialog" aria-modal="true" aria-labelledby="fight-title">
+        <section class="modal-panel">
+            <button id="close-fight-modal" class="modal-close"
+                    type="button" aria-label="Close combat window">×</button>
+
+            <p class="eyebrow">THREAT DETECTED</p>
+            <h2 id="fight-title">COMBAT</h2>
+            <p id="fight-description" class="modal-description"></p>
+
+            <div class="modal-divider"></div>
+
+            <p class="eyebrow">AVAILABLE EQUIPMENT</p>
+            <div id="fight-inventory" class="fight-inventory"></div>
+
+            <div class="modal-divider"></div>
+
+            <p class="eyebrow">YOUR DECISION</p>
+            <div id="fight-actions" class="action-buttons"></div>
+        </section>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
