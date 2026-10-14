@@ -1,0 +1,31 @@
+{
+  "id": "residential_district",
+  "name": "Residential District",
+  "start_area": "apartment_01",
+  "areas": [
+    {
+      "id": "apartment_01",
+      "name": "Abandoned Apartment",
+      "description": "Dust and termites consume the abandoned furniture. The former resident may still be present. Beware the Hollow — something that once lived here, now twisted into an undead husk.",
+      "connections": ["hallway_01"],
+      "resources": ["food", "drinks"],
+      "searchable": true
+    },
+    {
+      "id": "hallway_01",
+      "name": "Apartment Hallway",
+      "description": "A narrow, lightless hallway stretches towards a stairwell. Somewhere in the darkness, a stranger cries for help. The voice sounds human, but something about it feels terribly wrong. Do you help the stranger?",
+      "connections": ["apartment_01", "stairwell_01"],
+      "resources": ["backpack"],
+      "searchable": true
+    },
+    {
+      "id": "stairwell_01",
+      "name": "Stairwell",
+      "description": "Cracked concrete steps descend into absolute darkness. You cannot see what waits below, but something is moving in the blackness. A Lurker may be waiting to ambush anyone foolish enough to descend.",
+      "connections": ["hallway_01"],
+      "resources": ["food"],
+      "searchable": false
+    }
+  ]
+}
