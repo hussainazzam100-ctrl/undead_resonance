@@ -26,6 +26,14 @@
       "connections": ["hallway_01"],
       "resources": ["food"],
       "searchable": false
+    },
+    {
+      "id": "building_exit",
+      "name": "Ground-Floor Exit",
+      "description": "A battered door leads out into the cold night air.",
+      "connections": [],
+      "resources": [],
+      "searchable": false
     }
   ]
 }

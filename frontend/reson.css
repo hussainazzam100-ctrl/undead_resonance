@@ -12,6 +12,7 @@
     --health: #7e302e;
     --infection: #8e2838;
     --hunger: #a16a32;
+    --heal: #5f8a5a;
     --heading-font: 'Cinzel', Georgia, serif;
     --body-font: 'Share Tech Mono', monospace;
 }
@@ -297,6 +298,7 @@ body::before {
     color: #b9aa9b;
     line-height: 1.8;
     overflow-wrap: anywhere;
+    white-space: pre-line;
 }
 
 .log-prefix {
@@ -344,21 +346,42 @@ body::before {
     transform: translateY(-1px);
 }
 
-/* Keep End Turn separated from main decisions. */
+/* END TURN
+   Lives in its own container beneath every other choice panel so it
+   never sits between a decision and its options. */
+
+#turn-area {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px dashed #40302c;
+}
+
+#turn-area:empty,
+#turn-area.hidden {
+    display: none;
+}
 
 #turn-button {
     display: block;
     width: 100%;
-    margin-top: 22px;
+    margin: 0;
+    padding: 13px 18px;
     color: #bca9a0;
-    background: #171111;
-    border-color: #40302c;
+    background:
+        linear-gradient(180deg, rgba(143,32,40,.10), transparent),
+        #171111;
+    border: 1px solid #40302c;
+    border-left: 3px solid var(--blood);
+    letter-spacing: 4px;
     text-align: center;
 }
 
 #turn-button:hover:not(:disabled) {
-    background: #261416;
+    background:
+        linear-gradient(180deg, rgba(196,43,53,.16), transparent),
+        #261416;
     border-color: #75404a;
+    border-left-color: var(--blood-bright);
 }
 
 #movement-choices,
@@ -408,6 +431,7 @@ body::before {
 #game-ending p {
     width: 100%;
     color: #b9aa9b;
+    white-space: pre-line;
 }
 
 /* STATUS */
@@ -469,6 +493,10 @@ body::before {
 }
 
 #inventory-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     padding: 9px 0;
     color: #b9aa9b;
     border-bottom: 1px solid #241d1b;
@@ -478,6 +506,27 @@ body::before {
     content: "›";
     margin-right: 10px;
     color: var(--blood-bright);
+}
+
+#inventory-list li .inv-name {
+    flex: 1;
+}
+
+.inv-use {
+    padding: 2px 10px;
+    color: #d8c7b8;
+    background: #291416;
+    border: 1px solid #653039;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .18s, border-color .18s;
+}
+
+.inv-use:hover:not(:disabled) {
+    background: #48191e;
+    border-color: var(--blood-bright);
 }
 
 .inventory-capacity {
@@ -498,7 +547,7 @@ body::before {
     letter-spacing: 1px;
 }
 
-/* FIGHT MODAL */
+/* COMBAT MODAL */
 
 .modal-backdrop {
     position: fixed;
@@ -524,6 +573,7 @@ body::before {
         linear-gradient(145deg, #191313, #0c0a0a);
     box-shadow: 0 25px 90px rgba(0,0,0,.7), 0 0 35px rgba(143,32,40,.12);
     animation: modal-in .2s ease both;
+    scrollbar-color: #4c2929 #100e0e;
 }
 
 .modal-panel h2 {
@@ -546,6 +596,132 @@ body::before {
     line-height: 1.9;
 }
 
+/* Combatant health bars */
+
+.combatants {
+    display: grid;
+    gap: 14px;
+    margin: 22px 0 24px;
+}
+
+.combatant {
+    padding: 14px 16px;
+    background: #120e0e;
+    border: 1px solid #392626;
+    border-left-width: 3px;
+}
+
+.enemy-card {
+    border-left-color: var(--blood-bright);
+}
+
+.player-card {
+    border-left-color: #8a7a6c;
+}
+
+.combatant-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 9px;
+}
+
+.combatant-name {
+    color: #e0d0bf;
+    font-family: var(--heading-font);
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.combatant-hp {
+    color: #b7a99b;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+.combat-track {
+    position: relative;
+    height: 12px;
+    overflow: hidden;
+    background: #2a2220;
+    border: 1px solid #3a2a28;
+}
+
+.combat-fill,
+.combat-ghost {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+}
+
+.combat-fill {
+    z-index: 2;
+    transition: width 380ms ease;
+}
+
+/* The ghost bar trails behind, showing how much was just lost. */
+.combat-ghost {
+    z-index: 1;
+    background: rgba(226, 190, 170, .55);
+    transition: width 900ms ease 420ms;
+}
+
+.enemy-fill {
+    background: linear-gradient(90deg, #7a1d25, var(--blood-bright));
+    box-shadow: 0 0 10px rgba(196,43,53,.45);
+}
+
+.player-fill {
+    background: linear-gradient(90deg, #6a2a28, #9a3a34);
+    box-shadow: 0 0 10px rgba(126,48,46,.5);
+}
+
+.combatant.hit {
+    animation: hit-shake .38s ease both;
+}
+
+.combatant.heal {
+    animation: heal-flash .8s ease both;
+}
+
+/* Combat log */
+
+.combat-log {
+    height: 160px;
+    overflow-y: auto;
+    padding: 12px 14px;
+    background: #0d0a0a;
+    border: 1px solid #2c1f1f;
+    scrollbar-color: #4c2929 #100e0e;
+}
+
+.combat-log p {
+    margin: 0 0 8px;
+    color: #b9aa9b;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+    animation: fade-in .25s ease both;
+}
+
+.clog-player_attack { color: #e6d9cd; }
+.clog-player_miss   { color: var(--muted); }
+.clog-enemy_attack  { color: #d0585f; }
+.clog-enemy_miss    { color: #a8887f; }
+.clog-heal          { color: #8fbf88; }
+.clog-info          { color: #b9a58f; font-style: italic; }
+.clog-victory       { color: #e0c7a0; }
+.clog-escape        { color: #e0c7a0; }
+.clog-defeat        { color: #d0585f; }
+.clog-notice        { color: #a16a65; }
+
+/* Combat actions and supplies */
+
 .fight-inventory {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
@@ -567,6 +743,7 @@ body::before {
 }
 
 .fight-item span {
+    flex: 1;
     color: var(--muted);
     font-size: 11px;
 }
@@ -577,6 +754,8 @@ body::before {
     color: #e6d9cd;
     background: #291416;
     border: 1px solid #653039;
+    text-transform: uppercase;
+    letter-spacing: 1px;
     cursor: pointer;
 }
 
@@ -591,6 +770,15 @@ body::before {
 
 .modal-panel #fight-actions button {
     flex: 1 1 140px;
+}
+
+#fight-actions .danger-action {
+    border-color: #8f303a;
+}
+
+#fight-actions .continue-action {
+    flex-basis: 100%;
+    letter-spacing: 4px;
 }
 
 #game-ending {
@@ -619,6 +807,20 @@ body::before {
 @keyframes modal-in {
     from { opacity: 0; transform: translateY(8px) scale(.99); }
     to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes hit-shake {
+    0%, 100% { transform: translateX(0); border-color: #392626; }
+    20% { transform: translateX(-5px); border-color: var(--blood-bright); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+}
+
+@keyframes heal-flash {
+    0%   { box-shadow: 0 0 0 rgba(95,138,90,0); }
+    30%  { box-shadow: 0 0 22px rgba(95,138,90,.45); border-color: var(--heal); }
+    100% { box-shadow: 0 0 0 rgba(95,138,90,0); }
 }
 
 /* RESPONSIVE */
@@ -658,6 +860,14 @@ body::before {
 
     .intro-content {
         padding: 30px 22px;
+    }
+
+    .combat-log {
+        height: 130px;
+    }
+
+    .modal-panel {
+        padding: 22px 18px;
     }
 }
 

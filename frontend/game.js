@@ -8,12 +8,7 @@ const ITEM_NAMES = {
     baseball_bat: "Baseball Bat"
 };
 
-const ITEM_DETAILS = {
-    food: "Restores health, reduces hunger.",
-    drinks: "A small boost when supplies are scarce.",
-    backpack: "Equipment for carrying supplies.",
-    baseball_bat: "A melee weapon for close encounters."
-};
+const CONSUMABLE_ITEMS = ["food", "drinks"];
 
 const AREA_NAMES = {
     apartment_01: "Abandoned Apartment",
@@ -22,16 +17,16 @@ const AREA_NAMES = {
     building_exit: "Ground-Floor Exit"
 };
 
+/*
+ * Combat encounters (combat: true) share one interface. All numbers
+ * shown in it come from the backend. Non-combat encounters are simple
+ * choice panels.
+ */
 const ENCOUNTERS = {
     hollow: {
         title: "THE HOLLOW",
         description: "Something once human blocks your path.",
-        endpoint: "hollow",
-        combat: true,
-        choices: [
-            ["fight", "Fight"],
-            ["flee", "Flee"]
-        ]
+        combat: true
     },
     mimic_plea: {
         title: "A CRY FOR HELP",
@@ -47,7 +42,7 @@ const ENCOUNTERS = {
         description: "The thing reveals its true nature.",
         endpoint: "mimic",
         choices: [
-            ["flee", "Flee"]
+            ["Fight", "Flee"]
         ]
     },
     lurker: {
@@ -68,14 +63,9 @@ const ENCOUNTERS = {
         ]
     },
     stairwell_creature: {
-        title: "THE SCRAPER",
+        title: "THE LURKER",
         description: "A creature emerges from the darkness.",
-        endpoint: "stairwell_creature",
-        combat: true,
-        choices: [
-            ["fight", "Fight"],
-            ["flee", "Flee"]
-        ]
+        combat: true
     }
 };
 
@@ -98,12 +88,26 @@ const el = {
     moveButton: document.getElementById("move-button"),
     mainActions: document.getElementById("main-action-buttons"),
     choices: document.getElementById("dynamic-choices"),
+    turnArea: document.getElementById("turn-area"),
+
     fightModal: document.getElementById("fight-modal"),
     fightTitle: document.getElementById("fight-title"),
     fightDescription: document.getElementById("fight-description"),
     fightInventory: document.getElementById("fight-inventory"),
     fightActions: document.getElementById("fight-actions"),
-    closeFight: document.getElementById("close-fight-modal")
+    closeFight: document.getElementById("close-fight-modal"),
+    combatLog: document.getElementById("combat-log"),
+
+    enemyCard: document.getElementById("enemy-card"),
+    enemyName: document.getElementById("enemy-name"),
+    enemyHealthText: document.getElementById("enemy-health-text"),
+    enemyBar: document.getElementById("enemy-bar"),
+    enemyGhost: document.getElementById("enemy-ghost"),
+
+    playerCard: document.getElementById("player-card"),
+    playerHealthText: document.getElementById("player-health-text"),
+    playerBar: document.getElementById("player-bar"),
+    playerGhost: document.getElementById("player-ghost")
 };
 
 let currentArea = null;
@@ -111,9 +115,16 @@ let currentPlayer = null;
 let currentInventory = null;
 let availableResources = [];
 let requestInProgress = false;
-let currentEncounter = null;
 let movementPanelOpen = false;
 let hasStarted = false;
+let lastDeathScene = null;
+
+/*
+ * Active combat window state. Everything in `state` is the latest
+ * snapshot returned by the backend; the frontend never computes damage.
+ *   { enemyId, state, log: [], concluded: null | "victory" | ... }
+ */
+let combatUI = null;
 
 async function fetchAPI(endpoint, options = {}) {
     const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -134,7 +145,11 @@ async function fetchAPI(endpoint, options = {}) {
             ? data.detail || data.message
             : data;
 
-        throw new Error(message || `Request failed: ${response.status}`);
+        throw new Error(
+            typeof message === "string"
+                ? message
+                : `Request failed: ${response.status}`
+        );
     }
 
     return data;
@@ -163,6 +178,20 @@ function isGameActive() {
     return getStatus() === "playing";
 }
 
+function getEventId(event) {
+    if (!event) return null;
+    if (typeof event === "string") return event;
+
+    return event.id || event.event_id || event.type || event.event || null;
+}
+
+function isCombatActive() {
+    if (combatUI) return true;
+
+    const eventId = getEventId(currentPlayer?.active_event);
+    return Boolean(eventId && ENCOUNTERS[eventId]?.combat);
+}
+
 function updateStat(valueElement, barElement, value) {
     const numericValue = Math.max(0, Math.min(100, Number(value) || 0));
 
@@ -189,7 +218,23 @@ function renderPlayer(player, inventory) {
     } else {
         items.forEach(itemId => {
             const li = document.createElement("li");
-            li.textContent = ITEM_NAMES[itemId] || itemId;
+
+            const name = document.createElement("span");
+            name.className = "inv-name";
+            name.textContent = ITEM_NAMES[itemId] || itemId;
+            li.appendChild(name);
+
+            if (CONSUMABLE_ITEMS.includes(itemId)) {
+                const use = document.createElement("button");
+                use.type = "button";
+                use.className = "inv-use";
+                use.textContent = "Use";
+                use.addEventListener("click", () =>
+                    consumeOutsideCombat(itemId)
+                );
+                li.appendChild(use);
+            }
+
             el.inventoryList.appendChild(li);
         });
     }
@@ -204,7 +249,7 @@ function renderArea(area) {
     currentArea = area;
 
     el.areaName.textContent =
-        AREA_NAMES[area.area] || area.name || area.area || "Unknown Area";
+        AREA_NAMES[area.area_id] || area.area || area.name || "Unknown Area";
 
     el.areaDescription.textContent =
         area.description || "There is nothing more to observe.";
@@ -213,6 +258,7 @@ function renderArea(area) {
 }
 
 function updateActionAvailability() {
+    const status = getStatus();
     const active = isGameActive() && !requestInProgress;
     const hasEncounter = Boolean(currentPlayer?.active_event);
     const hasModal = !el.fightModal.classList.contains("hidden");
@@ -226,18 +272,44 @@ function updateActionAvailability() {
         !currentArea || !Array.isArray(currentArea.connections) ||
         currentArea.connections.length === 0;
 
+    document.querySelectorAll(".inv-use").forEach(button => {
+        button.disabled = !active || hasEncounter || hasModal;
+    });
+
     const turnButton = document.getElementById("turn-button");
 
     if (turnButton) {
-        turnButton.classList.toggle("hidden", movementPanelOpen);
-        turnButton.disabled =
-            !active || hasEncounter || hasModal || movementPanelOpen;
+        const gameOver = status === "dead" || status === "won";
+
+        // Hidden during movement selection, combat and endings.
+        el.turnArea.classList.toggle(
+            "hidden",
+            movementPanelOpen || isCombatActive() || gameOver
+        );
+
+        const normalTurn =
+            active && !hasEncounter && !hasModal && !movementPanelOpen;
+
+        // A pending death is resolved by advancing the turn.
+        const resolvePendingDeath =
+            status === "death_pending" && !requestInProgress && !hasModal;
+
+        turnButton.disabled = !(normalTurn || resolvePendingDeath);
     }
 }
 
 function setBusy(value) {
     requestInProgress = value;
     updateActionAvailability();
+}
+
+async function refreshPlayerOnly() {
+    const [player, inventory] = await Promise.all([
+        fetchAPI(`/players/${PLAYER_ID}`),
+        fetchAPI(`/players/${PLAYER_ID}/inventory`)
+    ]);
+
+    renderPlayer(player, inventory);
 }
 
 async function refreshGame() {
@@ -261,13 +333,6 @@ async function refreshGame() {
     }
 }
 
-function getEventId(event) {
-    if (!event) return null;
-    if (typeof event === "string") return event;
-
-    return event.id || event.event_id || event.type || event.event || null;
-}
-
 /* INTRO */
 
 async function startGame() {
@@ -282,6 +347,10 @@ async function startGame() {
         });
 
         hasStarted = true;
+        lastDeathScene = null;
+        combatUI = null;
+        currentPlayer = null;
+
         el.intro.classList.add("hidden");
         el.game.classList.remove("hidden");
 
@@ -380,6 +449,10 @@ function renderPickupChoices() {
 
                 await refreshGame();
                 renderPickupChoices();
+
+                if (result.encounter) {
+                    renderEncounter(result.encounter);
+                }
             } catch (error) {
                 addLog(error.message, "NOTICE");
                 button.disabled = false;
@@ -392,6 +465,30 @@ function renderPickupChoices() {
     });
 
     el.choices.appendChild(container);
+}
+
+/* USING SUPPLIES OUTSIDE COMBAT */
+
+async function consumeOutsideCombat(itemId) {
+    if (requestInProgress || !isGameActive() || currentPlayer?.active_event) {
+        return;
+    }
+
+    setBusy(true);
+
+    try {
+        const result = await fetchAPI(`/players/${PLAYER_ID}/consume`, {
+            method: "POST",
+            body: JSON.stringify({ item: itemId })
+        });
+
+        addLog(result.message, "INVENTORY");
+        await refreshGame();
+    } catch (error) {
+        addLog(error.message, "NOTICE");
+    } finally {
+        setBusy(false);
+    }
 }
 
 /* MOVEMENT */
@@ -455,13 +552,6 @@ async function moveArea() {
                 if (result.encounter) {
                     renderEncounter(result.encounter);
                 }
-
-                if (result.scenario_status === "won") {
-                    renderTerminalState({
-                        ...currentPlayer,
-                        scenario_status: "won"
-                    });
-                }
             } catch (error) {
                 addLog(error.message, "NOTICE");
                 button.disabled = false;
@@ -478,12 +568,16 @@ async function moveArea() {
     updateActionAvailability();
 }
 
-/* ENCOUNTERS */
+/* ENCOUNTERS (NON-COMBAT) */
 
 function closeEncounterUI() {
     document.getElementById("encounter-choices")?.remove();
-    el.fightModal.classList.add("hidden");
-    currentEncounter = null;
+
+    // A combat window that is still showing its outcome stays open.
+    if (!combatUI) {
+        el.fightModal.classList.add("hidden");
+    }
+
     updateActionAvailability();
 }
 
@@ -498,10 +592,8 @@ function renderEncounter(event) {
         return;
     }
 
-    currentEncounter = { ...encounter, id: eventId };
-
     if (encounter.combat) {
-        openFightModal(event, encounter);
+        openFightModal(eventId);
         return;
     }
 
@@ -541,143 +633,7 @@ function renderEncounter(event) {
     updateActionAvailability();
 }
 
-function openFightModal(event, encounter) {
-    currentEncounter = { ...encounter, id: encounter.id || getEventId(event) };
-
-    el.fightTitle.textContent = encounter.title;
-    el.fightDescription.textContent =
-        typeof event === "object" && event.description
-            ? event.description
-            : encounter.description;
-
-    renderFightInventory(encounter);
-    renderFightActions(encounter);
-
-    el.fightModal.classList.remove("hidden");
-    updateActionAvailability();
-}
-
-function renderFightInventory(encounter) {
-    el.fightInventory.replaceChildren();
-
-    const inventory = currentInventory?.inventory || [];
-    const usableItems = inventory.filter(item =>
-        ["baseball_bat", "food", "drinks"].includes(item)
-    );
-
-    if (!usableItems.length) {
-        const message = document.createElement("p");
-        message.className = "modal-description";
-        message.textContent = "You have no usable supplies.";
-        el.fightInventory.appendChild(message);
-        return;
-    }
-
-    usableItems.forEach(itemId => {
-        const card = document.createElement("div");
-        card.className = "fight-item";
-
-        const title = document.createElement("strong");
-        title.textContent = ITEM_NAMES[itemId] || itemId;
-
-        const description = document.createElement("span");
-        description.textContent = ITEM_DETAILS[itemId] || "An item in your inventory.";
-
-        const button = document.createElement("button");
-        button.type = "button";
-
-        if (itemId === "baseball_bat") {
-            button.textContent = "Use Weapon";
-            button.addEventListener("click", () => {
-                submitEncounterChoice(
-                    encounter,
-                    "fight",
-                    null,
-                    button,
-                    true
-                );
-            });
-        } else {
-            button.textContent = itemId === "food" ? "Consume Food" : "Drink";
-
-            button.addEventListener("click", () =>
-                consumeDuringEncounter(itemId, button)
-            );
-        }
-
-        card.append(title, description, button);
-        el.fightInventory.appendChild(card);
-    });
-}
-
-function renderFightActions(encounter) {
-    el.fightActions.replaceChildren();
-
-    encounter.choices.forEach(([choice, label]) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.textContent = label;
-
-        button.addEventListener("click", () => {
-            submitEncounterChoice(encounter, choice, null, button, true);
-        });
-
-        el.fightActions.appendChild(button);
-    });
-}
-
-async function consumeDuringEncounter(itemId, button) {
-    if (requestInProgress || !isGameActive()) return;
-
-    setBusy(true);
-    button.disabled = true;
-
-    try {
-        const result = await fetchAPI(`/players/${PLAYER_ID}/consume`, {
-            method: "POST",
-            body: JSON.stringify({ item: itemId })
-        });
-
-        el.fightModal.classList.add("hidden");
-
-        addLog(
-            result.message ||
-                (itemId === "food"
-                    ? "You consume your food."
-                    : "You take a drink."),
-            "INVENTORY"
-        );
-
-        /*
-         * Food consumed during the Hollow encounter queues a death scene
-         * in the backend. The backend should resolve it on the next turn,
-         * not instantly when food is consumed.
-         */
-        if (result.scenario_status === "death_pending" ||
-            result.pending_death_scene ||
-            result.death_scene_pending) {
-            addLog(
-                "You have left yourself exposed. Advance the turn to face the consequences.",
-                "WARNING"
-            );
-        }
-
-        await refreshGame();
-    } catch (error) {
-        addLog(error.message, "NOTICE");
-        button.disabled = false;
-    } finally {
-        setBusy(false);
-    }
-}
-
-async function submitEncounterChoice(
-    encounter,
-    choice,
-    panel,
-    button,
-    fromModal = false
-) {
+async function submitEncounterChoice(encounter, choice, panel, button) {
     if (requestInProgress || !isGameActive()) return;
 
     setBusy(true);
@@ -694,9 +650,7 @@ async function submitEncounterChoice(
 
         panel?.remove();
 
-        if (fromModal) {
-            el.fightModal.classList.add("hidden");
-        }
+        if (result.death_scene) lastDeathScene = result.death_scene;
 
         handleActionResponse(result, "EVENT");
         await refreshGame();
@@ -707,6 +661,280 @@ async function submitEncounterChoice(
     } catch (error) {
         addLog(error.message, "NOTICE");
         button.disabled = false;
+    } finally {
+        setBusy(false);
+    }
+}
+
+/* COMBAT WINDOW */
+
+async function openFightModal(eventId) {
+    // Same fight already showing: keep its log, just resync.
+    if (!combatUI || combatUI.enemyId !== eventId) {
+        combatUI = {
+            enemyId: eventId,
+            state: null,
+            log: [],
+            concluded: null
+        };
+    }
+
+    const session = combatUI;
+
+    try {
+        const state = await fetchAPI(`/players/${PLAYER_ID}/combat`);
+
+        if (combatUI !== session) return;
+
+        if (!state.active) {
+            combatUI = null;
+            return;
+        }
+
+        const previous = session.state;
+        session.state = state;
+
+        if (!session.log.length) {
+            session.log.push({
+                type: "info",
+                text: `Combat begins against ${state.enemy.name}.`
+            });
+        }
+
+        el.fightModal.classList.remove("hidden");
+        renderCombat(previous);
+        updateActionAvailability();
+    } catch (error) {
+        addLog(error.message, "NOTICE");
+        combatUI = null;
+    }
+}
+
+function flashCard(card, className) {
+    card.classList.remove("hit", "heal");
+    void card.offsetWidth;
+    card.classList.add(className);
+}
+
+function setCombatBar(fill, ghost, text, value, max) {
+    const percent = max > 0
+        ? Math.max(0, Math.min(100, (value / max) * 100))
+        : 0;
+
+    fill.style.width = `${percent}%`;
+    ghost.style.width = `${percent}%`;
+    text.textContent = `${value} / ${max}`;
+}
+
+function renderCombat(previous = null) {
+    const state = combatUI?.state;
+    if (!state) return;
+
+    const encounter = ENCOUNTERS[combatUI.enemyId];
+
+    el.fightTitle.textContent =
+        (encounter?.title || state.enemy.name).toUpperCase();
+    el.fightDescription.textContent = state.enemy.description;
+
+    el.enemyName.textContent = state.enemy.name;
+
+    setCombatBar(
+        el.enemyBar, el.enemyGhost, el.enemyHealthText,
+        state.enemy.health, state.enemy.max_health
+    );
+
+    setCombatBar(
+        el.playerBar, el.playerGhost, el.playerHealthText,
+        state.player.health, state.player.max_health
+    );
+
+    if (previous) {
+        if (state.enemy.health < previous.enemy.health) {
+            flashCard(el.enemyCard, "hit");
+        }
+
+        if (state.player.health < previous.player.health) {
+            flashCard(el.playerCard, "hit");
+        } else if (state.player.health > previous.player.health) {
+            flashCard(el.playerCard, "heal");
+        }
+    }
+
+    renderCombatLog();
+    renderFightInventory();
+    renderFightActions();
+}
+
+function renderCombatLog() {
+    el.combatLog.replaceChildren();
+
+    (combatUI?.log || []).forEach(entry => {
+        const line = document.createElement("p");
+        line.className = `clog-${entry.type || "info"}`;
+        line.textContent = entry.text;
+        el.combatLog.appendChild(line);
+    });
+
+    el.combatLog.scrollTop = el.combatLog.scrollHeight;
+}
+
+function renderFightInventory() {
+    el.fightInventory.replaceChildren();
+
+    if (!combatUI?.state) return;
+
+    const locked = requestInProgress || Boolean(combatUI.concluded);
+    const items = combatUI.state.items || [];
+
+    if (!items.length) {
+        const message = document.createElement("p");
+        message.className = "modal-description";
+        message.textContent = "You have no usable supplies.";
+        el.fightInventory.appendChild(message);
+        return;
+    }
+
+    items.forEach(item => {
+        const card = document.createElement("div");
+        card.className = "fight-item";
+
+        const title = document.createElement("strong");
+        title.textContent = `${item.name} x${item.count}`;
+
+        const description = document.createElement("span");
+        description.textContent = item.description;
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "Use";
+        button.disabled = locked;
+
+        button.addEventListener("click", () =>
+            combatAction("use_item", item.id)
+        );
+
+        card.append(title, description, button);
+        el.fightInventory.appendChild(card);
+    });
+}
+
+function makeActionButton(label, handler, options = {}) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.disabled = Boolean(options.disabled);
+
+    if (options.className) button.className = options.className;
+
+    button.addEventListener("click", handler);
+    return button;
+}
+
+function renderFightActions() {
+    el.fightActions.replaceChildren();
+
+    if (!combatUI?.state) return;
+
+    if (combatUI.concluded) {
+        el.fightActions.appendChild(
+            makeActionButton("Continue", finishCombat, {
+                className: "continue-action"
+            })
+        );
+        return;
+    }
+
+    const locked = requestInProgress;
+    const weapon = combatUI.state.weapon;
+
+    el.fightActions.append(
+        makeActionButton(
+            `Attack (${weapon.name})`,
+            () => combatAction("attack"),
+            { disabled: locked }
+        ),
+        makeActionButton(
+            "Inspect",
+            () => combatAction("inspect"),
+            { disabled: locked }
+        ),
+        makeActionButton(
+            "Flee",
+            () => combatAction("flee"),
+            { disabled: locked, className: "danger-action" }
+        )
+    );
+}
+
+async function combatAction(action, item = null) {
+    if (requestInProgress || !combatUI || combatUI.concluded) return;
+
+    setBusy(true);
+    renderFightActions();
+    renderFightInventory();
+
+    try {
+        const result = await fetchAPI(
+            `/players/${PLAYER_ID}/combat/action`,
+            {
+                method: "POST",
+                body: JSON.stringify({ action, item })
+            }
+        );
+
+        const previous = combatUI.state;
+
+        combatUI.state = result.combat;
+        (result.combat_log || []).forEach(entry => combatUI.log.push(entry));
+
+        if (result.death_scene) lastDeathScene = result.death_scene;
+
+        if (result.result && result.result !== "ongoing") {
+            combatUI.concluded = result.result;
+            logCombatConclusion(result);
+        }
+
+        renderCombat(previous);
+
+        // Sidebar bars, hunger and inventory follow the backend too.
+        await refreshPlayerOnly();
+    } catch (error) {
+        combatUI.log.push({ type: "notice", text: error.message });
+        renderCombatLog();
+    } finally {
+        setBusy(false);
+        renderFightActions();
+        renderFightInventory();
+    }
+}
+
+function logCombatConclusion(result) {
+    const log = result.combat_log || [];
+    const last = log[log.length - 1];
+
+    if (result.result === "victory" || result.result === "escaped") {
+        addLog(last?.text, "COMBAT");
+    } else if (result.result === "defeat") {
+        addLog("You have fallen.", "COMBAT");
+    }
+
+    if (result.next_objective) {
+        addLog(result.next_objective, "OBJECTIVE");
+    }
+}
+
+async function finishCombat() {
+    if (!combatUI || requestInProgress) return;
+
+    combatUI = null;
+    el.fightModal.classList.add("hidden");
+
+    setBusy(true);
+
+    try {
+        await refreshGame();
+    } catch (error) {
+        addLog(error.message, "NOTICE");
     } finally {
         setBusy(false);
     }
@@ -723,21 +951,17 @@ function renderTurnButton() {
         button.type = "button";
         button.textContent = "End Turn";
         button.addEventListener("click", takeTurn);
-        el.choices.appendChild(button);
+        el.turnArea.appendChild(button);
     }
 
-    button.classList.toggle("hidden", movementPanelOpen);
-
-    button.disabled =
-        !isGameActive() ||
-        requestInProgress ||
-        Boolean(currentPlayer?.active_event) ||
-        !el.fightModal.classList.contains("hidden") ||
-        movementPanelOpen;
+    updateActionAvailability();
 }
 
 async function takeTurn() {
-    if (!isGameActive() || requestInProgress) return;
+    const status = getStatus();
+
+    if (requestInProgress) return;
+    if (status !== "playing" && status !== "death_pending") return;
 
     setBusy(true);
 
@@ -745,6 +969,8 @@ async function takeTurn() {
         const result = await fetchAPI(`/players/${PLAYER_ID}/turn`, {
             method: "POST"
         });
+
+        if (result.death_scene) lastDeathScene = result.death_scene;
 
         handleActionResponse(result, "TURN");
         await refreshGame();
@@ -762,7 +988,7 @@ function handleActionResponse(result, type = "SYSTEM") {
 
     if (result.message) addLog(result.message, type);
 
-    if (result.pending_death_scene) {
+    if (result.death_scene_pending || result.pending_death_scene) {
         addLog(
             "A fatal consequence is pending. Advance the turn to resolve it.",
             "WARNING"
@@ -802,6 +1028,7 @@ function renderTerminalState(player) {
         showEnding(
             "YOU DIED",
             player.pending_death_scene ||
+                lastDeathScene ||
                 "Your survival attempt has ended.",
             false
         );
@@ -817,7 +1044,11 @@ function renderTerminalState(player) {
 }
 
 function showEnding(title, message, victory) {
-    el.fightModal.classList.add("hidden");
+    // A combat window still showing its outcome closes via Continue.
+    if (!combatUI) {
+        el.fightModal.classList.add("hidden");
+    }
+
     closeMovementPanel();
 
     document.getElementById("encounter-choices")?.remove();
@@ -841,16 +1072,12 @@ function showEnding(title, message, victory) {
 
     panel.append(heading, description);
 
-    let replay = document.getElementById("replay-button");
-
-    if (!replay) {
-        replay = document.createElement("button");
-        replay.id = "replay-button";
-        replay.type = "button";
-        replay.textContent = "Play Again";
-        replay.addEventListener("click", startGame);
-        panel.appendChild(replay);
-    }
+    const replay = document.createElement("button");
+    replay.id = "replay-button";
+    replay.type = "button";
+    replay.textContent = "Play Again";
+    replay.addEventListener("click", startGame);
+    panel.appendChild(replay);
 
     updateActionAvailability();
 }
@@ -863,9 +1090,10 @@ function clearDynamicUI() {
         "game-ending"
     ].forEach(id => document.getElementById(id)?.remove());
 
+    combatUI = null;
     el.fightModal.classList.add("hidden");
     movementPanelOpen = false;
-    currentEncounter = null;
+    availableResources = [];
 }
 
 /* EVENT LISTENERS */
@@ -876,10 +1104,15 @@ el.moveButton.addEventListener("click", moveArea);
 
 el.closeFight.addEventListener("click", () => {
     /*
-     * Do not allow a combat encounter to be dismissed to bypass it.
-     * The player must choose an action.
+     * A fight cannot be dismissed to bypass it. Once it has ended, the
+     * close button acts like Continue.
      */
-    if (currentPlayer?.active_event) {
+    if (combatUI?.concluded) {
+        finishCombat();
+        return;
+    }
+
+    if (combatUI || currentPlayer?.active_event) {
         addLog("You cannot look away from the threat.", "WARNING");
         return;
     }
@@ -889,7 +1122,11 @@ el.closeFight.addEventListener("click", () => {
 });
 
 el.fightModal.addEventListener("click", event => {
-    if (event.target === el.fightModal && currentPlayer?.active_event) {
+    if (event.target !== el.fightModal) return;
+
+    if (combatUI?.concluded) {
+        finishCombat();
+    } else if (combatUI || currentPlayer?.active_event) {
         addLog("The threat is still there. Choose your action.", "WARNING");
     }
 });
