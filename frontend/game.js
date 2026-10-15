@@ -1,5 +1,5 @@
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://undead-resonance.onrender.com";
 const PLAYER_ID = "player_01";
 
 const ITEM_NAMES = {
