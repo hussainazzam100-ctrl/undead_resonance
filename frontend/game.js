@@ -1,4 +1,3 @@
-
 const API_BASE = "https://undead-resonance.onrender.com";
 const PLAYER_ID = "player_01";
 

@@ -22,11 +22,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://hussainazzam100-ctrl.github.io",
         "http://127.0.0.1:3000",
         "http://localhost:3000",
         "http://127.0.0.1:5500",
         "http://localhost:5500",
-        "https://hussainazzam100-ctrl.github.io/undead_resonance/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
